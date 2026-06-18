@@ -20,7 +20,6 @@ windows/config.json
 windows/icon.png
 windows/build/
 windows/dist/
-windows/*.spec
 windows/test_android.png
 
 # Temporary test images
