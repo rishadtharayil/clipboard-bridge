@@ -10,7 +10,6 @@ A secure, automatic clipboard synchronization utility between **Windows** and **
 - **📱 QR Code Pairing:** Scan a dynamically generated QR code from your phone screen to pair instantly.
 - **⚙️ Background Sync & System Tray:** The Windows app runs quietly in your System Tray. Right-click to toggle pause, open settings, or set it to run on startup.
 - **📡 Automatic Connection:** Discovers and pairs devices automatically over local Wi-Fi. A manual IP fallback is available if UDP broadcasts are restricted.
-- **⚡ Wi-Fi Only Mode:** The Android app automatically restricts data synchronization to Wi-Fi connections, conserving mobile data.
 - **🔔 Native Toasts:** Triggers native OS Toast notifications on Windows and Toast bubbles on Android upon successful sync.
 
 ---
