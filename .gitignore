@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Windows App Config & Outputs
+windows/config.json
+windows/icon.png
+windows/build/
+windows/dist/
+windows/*.spec
+windows/test_android.png
+
+# Temporary test images
+reconstructed_clipboard.png
+test_blue.png
+
+# Android Build artifacts (already ignored in android/.gitignore, but added for safety)
+android/.gradle/
+android/build/
+android/local.properties
+android/app/build/
+android/.kotlin/
