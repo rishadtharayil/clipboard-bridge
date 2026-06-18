@@ -17,7 +17,6 @@ Thumbs.db
 
 # Windows App Config & Outputs
 windows/config.json
-windows/icon.png
 windows/build/
 windows/dist/
 windows/test_android.png
