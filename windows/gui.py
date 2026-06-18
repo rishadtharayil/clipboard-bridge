@@ -15,14 +15,19 @@ from pystray import MenuItem as item
 
 from clipboard_server import ClipboardServer
 
+if getattr(sys, 'frozen', False):
+    APP_DIR = os.path.dirname(sys.executable)
+else:
+    APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def resource_path(relative_path):
     try:
         base_path = sys._MEIPASS
     except Exception:
-        base_path = os.path.abspath(".")
+        base_path = APP_DIR
     return os.path.join(base_path, relative_path)
 
-CONFIG_FILE = "config.json"
+CONFIG_FILE = os.path.join(APP_DIR, "config.json")
 
 class ClipboardBridgeApp:
     def __init__(self):
@@ -89,7 +94,11 @@ class ClipboardBridgeApp:
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_ALL_ACCESS)
             if enable:
-                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, sys.executable)
+                if getattr(sys, 'frozen', False):
+                    cmd = f'"{sys.executable}"'
+                else:
+                    cmd = f'"{sys.executable}" "{os.path.abspath(sys.argv[0])}"'
+                winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, cmd)
             else:
                 try:
                     winreg.DeleteValue(key, app_name)
