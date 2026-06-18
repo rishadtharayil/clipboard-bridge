@@ -34,7 +34,7 @@
         <service
             android:name=".ClipboardSyncService"
             android:foregroundServiceType="dataSync"
-            android:exported="true" />
+            android:exported="false" />
 
         <!-- Quick Settings Tile -->
         <service

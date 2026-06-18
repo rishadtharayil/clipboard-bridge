@@ -354,10 +354,22 @@ class ClipboardSyncService : Service() {
             try {
                 addLog("Connecting to server $ip:$serverPort...")
                 val socket = Socket()
+                socket.soTimeout = 30000
                 socket.connect(InetSocketAddress(ip, serverPort), 5000)
                 tcpSocket = socket
                 connectionStatus.value = "Connected"
                 addLog("Connected to Windows Server successfully!")
+
+                // Start active heartbeat thread
+                val heartbeatThread = Thread {
+                    try {
+                        while (isServiceRunning && tcpSocket == socket && !socket.isClosed) {
+                            Thread.sleep(10000)
+                            sendPacket(2, ByteArray(0)) // Send Ping (type 2)
+                        }
+                    } catch (e: Exception) {}
+                }
+                heartbeatThread.start()
 
                 // Start read loop
                 val dis = DataInputStream(socket.getInputStream())
@@ -385,9 +397,11 @@ class ClipboardSyncService : Service() {
                                 writeImageToClipboard(decrypted)
                                 showToast("Image received from Windows")
                             }
-                            2 -> { // Heartbeat
-                                // Send heartbeat response back to maintain connection
-                                sendPacket(2, ByteArray(0))
+                            2 -> { // Heartbeat Ping
+                                sendPacket(3, ByteArray(0)) // Respond with Pong
+                            }
+                            3 -> { // Heartbeat Pong
+                                // Do nothing, socket read resets soTimeout automatically
                             }
                         }
                     } catch (e: Exception) {
@@ -414,7 +428,7 @@ class ClipboardSyncService : Service() {
             return
         }
         val dir = syncDirection.value
-        if (dir == "windows_to_android") {
+        if (type != 2 && type != 3 && dir == "windows_to_android") {
             addLog("Sync skipped: Sync direction is Windows -> Android only")
             return
         }

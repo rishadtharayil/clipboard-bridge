@@ -2,7 +2,9 @@ package com.example.clipboardbridge
 
 import java.security.MessageDigest
 import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
 import javax.crypto.spec.SecretKeySpec
 
 object CryptoUtils {
@@ -13,8 +15,10 @@ object CryptoUtils {
     private const val IV_LENGTH_BYTES = 12
 
     fun deriveKey(pin: String): SecretKeySpec {
-        val md = MessageDigest.getInstance("SHA-256")
-        val keyBytes = md.digest((pin + SALT).toByteArray(Charsets.UTF_8))
+        val salt = SALT.toByteArray(Charsets.UTF_8)
+        val spec = PBEKeySpec(pin.toCharArray(), salt, 100000, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1")
+        val keyBytes = factory.generateSecret(spec).encoded
         return SecretKeySpec(keyBytes, ALGORITHM)
     }
 

@@ -21,11 +21,9 @@ class ClipboardServer:
         self.status_callback = status_callback
         self.history_callback = history_callback
         
-        # Derive AES key
+        # Derive AES key using PBKDF2
         salt = b"ClipboardBridgeSalt"
-        md = hashlib.sha256()
-        md.update(key.encode('utf-8') + salt)
-        self.aes_key = md.digest()
+        self.aes_key = hashlib.pbkdf2_hmac('sha1', key.encode('utf-8'), salt, 100000, dklen=32)
 
         self.tcp_port = 9090
         self.udp_port = 9091
@@ -177,10 +175,16 @@ class ClipboardServer:
             
             while self.is_running:
                 client_sock, addr = self.tcp_socket.accept()
-                self.log(f"Android client connected from {addr[0]}:{addr[1]}")
                 
                 with self.clients_lock:
+                    if len(self.clients) >= 5:
+                        self.log(f"Rejected connection from {addr[0]}:{addr[1]} (connection limit reached)")
+                        client_sock.close()
+                        continue
+                    client_sock.settimeout(30.0)
                     self.clients[client_sock] = threading.Lock()
+                
+                self.log(f"Android client connected from {addr[0]}:{addr[1]}")
                 self.update_status()
                 
                 threading.Thread(target=self.client_reader_loop, args=(client_sock, addr), daemon=True).start()
@@ -214,9 +218,9 @@ class ClipboardServer:
                 try:
                     decrypted = self.decrypt(payload)
                     
-                    # Check sync direction
+                    # Check sync direction (only apply to clipboard updates)
                     sync_dir = self.config.get('sync_direction', 'bidirectional')
-                    if sync_dir == 'windows_to_android':
+                    if msg_type in (0, 1) and sync_dir == 'windows_to_android':
                         self.log("Ignored packet from Android (Sync direction is Windows -> Android only)")
                         continue
 
@@ -231,11 +235,21 @@ class ClipboardServer:
                         self.write_image_to_clipboard(decrypted)
                         if self.history_callback: self.history_callback("Image received")
                         win11toast.toast("Clipboard Bridge", "Image received from Android")
-                    elif msg_type == 2:  # Heartbeat
-                        # Respond back with heartbeat
-                        self.send_packet_to_client(sock, self.clients[sock], 2, b'')
+                    elif msg_type == 2:  # Heartbeat Ping
+                        # Respond with Pong (type 3)
+                        with self.clients_lock:
+                            lock = self.clients.get(sock)
+                        if lock:
+                            self.send_packet_to_client(sock, lock, 3, b'')
+                    elif msg_type == 3:  # Heartbeat Pong
+                        pass
                 except Exception as e:
-                    self.log(f"Failed to process client packet: {e}")
+                    self.log(f"Decryption/Processing failed: {e}. Disconnecting client.")
+                    try:
+                        sock.close()
+                    except:
+                        pass
+                    break
         except Exception as e:
             if self.is_running:
                 self.log(f"Client read error ({addr[0]}): {e}")
