@@ -15,16 +15,23 @@ from pystray import MenuItem as item
 
 from clipboard_server import ClipboardServer
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 CONFIG_FILE = "config.json"
 
 class ClipboardBridgeApp:
     def __init__(self):
-        self.config = self.load_config()
         self.server = None
         self.tray_icon = None
         self.history = []
         self.root = None
         self.root_ready = threading.Event()
+        self.config = self.load_config()
         
         # Start the server immediately
         self.start_server()
@@ -152,9 +159,10 @@ class ClipboardBridgeApp:
 
     # --- System Tray ---
     def create_tray_image(self):
-        if os.path.exists("icon.png"):
+        icon_path = resource_path("icon.png")
+        if os.path.exists(icon_path):
             try:
-                return Image.open("icon.png").resize((64, 64), Image.Resampling.LANCZOS)
+                return Image.open(icon_path).resize((64, 64), Image.Resampling.LANCZOS)
             except:
                 pass
         img = Image.new('RGB', (64, 64), color="white")
@@ -194,9 +202,10 @@ class ClipboardBridgeApp:
             self.root.geometry("600x550")
             self.root.configure(bg="#1E1E1E")
             
-            if os.path.exists("icon.png"):
+            icon_path = resource_path("icon.png")
+            if os.path.exists(icon_path):
                 try:
-                    self.win_icon = ImageTk.PhotoImage(Image.open("icon.png").resize((32, 32), Image.Resampling.LANCZOS))
+                    self.win_icon = ImageTk.PhotoImage(Image.open(icon_path).resize((32, 32), Image.Resampling.LANCZOS))
                     self.root.iconphoto(True, self.win_icon)
                 except:
                     pass
