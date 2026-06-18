@@ -65,10 +65,32 @@ jobs:
         working-directory: ./android
         run: ./gradlew assembleDebug assembleRelease
 
-      - name: Prepare APKs
+      - name: Prepare Debug APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk ClipboardBridge-Android-Debug.apk
+
+      - name: Sign Release APK
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          cp android/app/build/outputs/apk/debug/app-debug.apk ClipboardBridge-Android-Debug.apk
-          cp android/app/build/outputs/apk/release/app-release-unsigned.apk ClipboardBridge-Android-Release-Unsigned.apk
+          if [ -n "$SIGNING_KEY" ]; then
+            echo "Signing Key secret found. Signing release APK..."
+            echo "$SIGNING_KEY" | base64 -d > release.keystore
+            APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort | tail -n 1)
+            $APKSIGNER sign --ks release.keystore \
+              --ks-key-alias "$ALIAS" \
+              --ks-pass pass:"$KEYSTORE_PASSWORD" \
+              --key-pass pass:"$KEY_PASSWORD" \
+              --out ClipboardBridge-Android-Release.apk \
+              android/app/build/outputs/apk/release/app-release-unsigned.apk
+            rm release.keystore
+            echo "Release APK signed successfully."
+          else
+            echo "Signing Key secret not found. Falling back to copying unsigned APK."
+            cp android/app/build/outputs/apk/release/app-release-unsigned.apk ClipboardBridge-Android-Release.apk
+          fi
 
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
@@ -76,7 +98,7 @@ jobs:
           name: android-artifacts
           path: |
             ClipboardBridge-Android-Debug.apk
-            ClipboardBridge-Android-Release-Unsigned.apk
+            ClipboardBridge-Android-Release.apk
 
   create-release:
     runs-on: ubuntu-latest
@@ -102,7 +124,7 @@ jobs:
           files: |
             ClipboardBridge-Windows.zip
             ClipboardBridge-Android-Debug.apk
-            ClipboardBridge-Android-Release-Unsigned.apk
+            ClipboardBridge-Android-Release.apk
           draft: false
           prerelease: false
         env:
