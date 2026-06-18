@@ -22,7 +22,7 @@ A secure, automatic clipboard synchronization utility between **Windows** and **
 - Python 3.10+
 - Install dependencies:
   ```bash
-  pip install pillow qrcode win11toast pystray pywin32
+  pip install pillow qrcode win11toast pystray pywin32 cryptography
   ```
 
 #### Running the Server
@@ -31,6 +31,18 @@ A secure, automatic clipboard synchronization utility between **Windows** and **
    python gui.py
    ```
 2. Right-click the system tray icon and select **Show Settings / QR Code** to view your pairing QR code.
+
+#### Building Standalone Executable
+If you want to bundle the application into a single `.exe` file:
+1. Install PyInstaller:
+   ```bash
+   pip install pyinstaller
+   ```
+2. Navigate to the `windows/` directory and run:
+   ```bash
+   pyinstaller ClipboardBridge.spec
+   ```
+3. The self-contained executable will be generated in `windows/dist/ClipboardBridge.exe`.
 
 ---
 
