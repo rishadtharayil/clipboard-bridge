@@ -29,6 +29,7 @@ import java.net.Socket
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 import javax.crypto.spec.SecretKeySpec
+import com.example.clipboardbridge.data.ClipboardHistoryManager
 
 class ClipboardSyncService : Service() {
 
@@ -115,6 +116,7 @@ class ClipboardSyncService : Service() {
                             val hash = getHash(bytes)
                             if (hash != lastSentImageHash) {
                                 lastSentImageHash = hash
+                                ClipboardHistoryManager.addImageItem(applicationContext, bytes)
                                 sendPacket(1, bytes)
                                 addLog("Auto sync: screenshot sent to Windows (${bytes.size} bytes)")
                             }
@@ -149,6 +151,7 @@ class ClipboardSyncService : Service() {
     override fun onCreate() {
         super.onCreate()
         clipboardManager = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        ClipboardHistoryManager.initialize(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -485,6 +488,7 @@ class ClipboardSyncService : Service() {
                             if (hash == lastReceivedImageHash || hash == lastSentImageHash) return@post
 
                             lastSentImageHash = hash
+                            ClipboardHistoryManager.addImageItem(applicationContext, bytes)
                             Thread {
                                 sendPacket(1, bytes)
                             }.start()
@@ -497,6 +501,7 @@ class ClipboardSyncService : Service() {
                         if (hash == lastReceivedTextHash || hash == lastSentTextHash) return@post
 
                         lastSentTextHash = hash
+                        ClipboardHistoryManager.addTextItem(applicationContext, text)
                         addLog("Local text clipboard update detected")
                         Thread {
                             sendPacket(0, text.toByteArray(Charsets.UTF_8))
@@ -513,6 +518,7 @@ class ClipboardSyncService : Service() {
                                 if (hash == lastReceivedImageHash || hash == lastSentImageHash) return@post
 
                                 lastSentImageHash = hash
+                                ClipboardHistoryManager.addImageItem(applicationContext, bytes)
                                 Thread {
                                     sendPacket(1, bytes)
                                 }.start()
@@ -542,6 +548,7 @@ class ClipboardSyncService : Service() {
             val clip = ClipData.newPlainText("Synced Text", text)
             clipboardManager.setPrimaryClip(clip)
         }
+        ClipboardHistoryManager.addTextItem(applicationContext, text)
     }
 
     private fun writeImageToClipboard(imageBytes: ByteArray) {
@@ -570,6 +577,7 @@ class ClipboardSyncService : Service() {
                 addLog("Failed to write image to clipboard: ${e.message}")
             }
         }
+        ClipboardHistoryManager.addImageItem(applicationContext, imageBytes)
     }
 
     private fun getHash(bytes: ByteArray): String {

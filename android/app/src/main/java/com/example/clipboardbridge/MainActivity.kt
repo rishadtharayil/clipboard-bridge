@@ -12,10 +12,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.example.clipboardbridge.theme.ClipboardBridgeTheme
 import com.example.clipboardbridge.ui.main.MainScreen
+import com.example.clipboardbridge.data.ClipboardHistoryManager
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+
+    ClipboardHistoryManager.initialize(applicationContext)
 
     val prefs = getSharedPreferences("ClipboardBridgePrefs", Context.MODE_PRIVATE)
     val key = prefs.getString("key", null)
