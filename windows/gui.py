@@ -125,7 +125,7 @@ class ClipboardBridgeApp:
             self.server = None
             self.status_callback("Stopped")
 
-    def toggle_pause(self, icon, item):
+    def toggle_pause(self, icon=None, item=None):
         if self.server:
             self.stop_server()
         else:
@@ -179,11 +179,11 @@ class ClipboardBridgeApp:
 
     def setup_tray(self):
         menu = pystray.Menu(
-            item('Show Settings / QR Code', lambda: self.root.after(0, self.show_window), default=True),
-            item('Pause Syncing', lambda: self.root.after(0, self.toggle_pause), checked=lambda item: self.server is None),
+            item('Show Settings / QR Code', lambda *args: self.root.after(0, self.show_window), default=True),
+            item('Pause Syncing', lambda *args: self.root.after(0, self.toggle_pause), checked=lambda item: self.server is None),
             item('Run on Startup', self.toggle_startup, checked=lambda item: self.config.get('run_on_startup', False)),
             pystray.Menu.SEPARATOR,
-            item('Quit', lambda: self.root.after(0, self.quit_app))
+            item('Quit', lambda *args: self.root.after(0, self.quit_app))
         )
         self.tray_icon = pystray.Icon("ClipboardBridge", self.create_tray_image(), "Clipboard Bridge", menu)
         
