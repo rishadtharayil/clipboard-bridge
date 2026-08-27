@@ -9,6 +9,8 @@ import win32gui
 import win32con
 import win32clipboard
 import ctypes
+import queue
+import ipaddress
 from PIL import Image, ImageGrab
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import win11toast
@@ -44,7 +46,10 @@ class ClipboardServer:
         self.udp_socket = None
         self.listener_thread_id = None
         self.hwnd = None
-        self.ignore_next_clipboard_change = False
+        
+        # Clipboard processing
+        self.clipboard_queue = queue.Queue()
+        self.ignore_until_time = 0.0
 
     def log(self, message):
         self.log_callback(message)
@@ -79,6 +84,8 @@ class ClipboardServer:
         threading.Thread(target=self.udp_broadcast_loop, daemon=True).start()
         # Start Clipboard Listener window
         threading.Thread(target=self.clipboard_listener_loop, daemon=True).start()
+        # Start Clipboard Worker
+        threading.Thread(target=self.clipboard_worker_loop, daemon=True).start()
         
         self.log(f"Server started. Pairing Key: {self.key}")
 
@@ -132,30 +139,54 @@ class ClipboardServer:
             s.close()
         return ip
 
+    def get_interfaces_and_broadcasts(self):
+        """Get all local non-loopback IP addresses and attempt to find proper broadcast addresses."""
+        broadcasts = []
+        hostname = socket.gethostname()
+        try:
+            _, _, ips = socket.gethostbyname_ex(hostname)
+        except Exception:
+            ips = [self.get_local_ip()]
+            
+        for ip in ips:
+            if ip.startswith('127.'):
+                continue
+            
+            bcast_tuples = [(ip, '255.255.255.255')]
+            # Try to get more accurate subnet info if netifaces is available, otherwise guess common subnets
+            try:
+                # Add common subnet guesses to ensure coverage
+                ip_obj = ipaddress.IPv4Address(ip)
+                if not ip_obj.is_loopback:
+                    bcast_tuples.append((ip, str(ipaddress.IPv4Network(f"{ip}/24", strict=False).broadcast_address)))
+                    bcast_tuples.append((ip, str(ipaddress.IPv4Network(f"{ip}/16", strict=False).broadcast_address)))
+            except Exception:
+                pass
+                
+            # Keep unique broadcast addresses per interface
+            unique_bcasts = set()
+            for intf_ip, bcast_ip in bcast_tuples:
+                if (intf_ip, bcast_ip) not in unique_bcasts:
+                    unique_bcasts.add((intf_ip, bcast_ip))
+                    broadcasts.append((intf_ip, bcast_ip))
+                    
+        return broadcasts
+
     def udp_broadcast_loop(self):
         self.log(f"UDP broadcaster active on port {self.udp_port}...")
         while self.is_running:
             try:
-                hostname = socket.gethostname()
-                _, _, ips = socket.gethostbyname_ex(hostname)
+                broadcasts = self.get_interfaces_and_broadcasts()
                 
-                for ip in ips:
-                    if ip.startswith('127.'):
-                        continue
+                for intf_ip, bcast_ip in broadcasts:
                     try:
                         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-                        sock.bind((ip, 0))
-                        message = f"CLIPBOARD_BRIDGE_SERVER:{ip}:{self.tcp_port}"
+                        # Bind to the specific interface to ensure it goes out the right adapter
+                        sock.bind((intf_ip, 0))
                         
-                        # Send to limited broadcast
-                        sock.sendto(message.encode('utf-8'), ('255.255.255.255', self.udp_port))
-                        
-                        # Send to subnet broadcast (class C fallback)
-                        parts = ip.split('.')
-                        if len(parts) == 4:
-                            subnet_broadcast = f"{parts[0]}.{parts[1]}.{parts[2]}.255"
-                            sock.sendto(message.encode('utf-8'), (subnet_broadcast, self.udp_port))
+                        message = f"CLIPBOARD_BRIDGE_SERVER:{intf_ip}:{self.tcp_port}"
+                        sock.sendto(message.encode('utf-8'), (bcast_ip, self.udp_port))
                         
                         sock.close()
                     except Exception:
@@ -286,16 +317,49 @@ class ClipboardServer:
     def hash_data(self, data: bytes) -> str:
         return hashlib.sha256(data).hexdigest()
 
+    @property
+    def ignore_next_clipboard_change(self):
+        return time.time() < self.ignore_until_time
+
+    @ignore_next_clipboard_change.setter
+    def ignore_next_clipboard_change(self, value):
+        if value:
+            # Ignore clipboard changes for the next 1.5 seconds
+            self.ignore_until_time = time.time() + 1.5
+        else:
+            self.ignore_until_time = 0.0
+
     def handle_clipboard_change(self):
-        # We need to run this on a separate thread or safely to avoid blocking the Win32 message pump
-        if getattr(self, 'ignore_next_clipboard_change', False):
-            self.ignore_next_clipboard_change = False
+        if self.ignore_next_clipboard_change:
             return
-        threading.Thread(target=self._process_clipboard_change, daemon=True).start()
+        
+        # Debounce: only add to queue if empty to prevent processing storm
+        if self.clipboard_queue.empty():
+            self.clipboard_queue.put(True)
+
+    def clipboard_worker_loop(self):
+        while self.is_running:
+            try:
+                # Wait for a clipboard change event
+                self.clipboard_queue.get(timeout=1.0)
+                
+                # Consume any extra events that piled up
+                while not self.clipboard_queue.empty():
+                    self.clipboard_queue.get_nowait()
+                
+                # Double-check ignore flag in case it was set while waiting
+                if self.ignore_next_clipboard_change:
+                    continue
+                    
+                self._process_clipboard_change()
+            except queue.Empty:
+                pass
+            except Exception as e:
+                self.log(f"Clipboard worker error: {e}")
 
     def _process_clipboard_change(self):
         # We process this with a tiny delay to ensure the clipboard is ready to read
-        time.sleep(0.1)
+        time.sleep(0.2)
         
         # Check sync direction
         sync_dir = self.config.get('sync_direction', 'bidirectional')
@@ -351,7 +415,6 @@ class ClipboardServer:
             win32clipboard.SetClipboardText(text, win32clipboard.CF_UNICODETEXT)
             self.log("Successfully wrote text to Windows clipboard")
         except Exception as e:
-            self.ignore_next_clipboard_change = False
             self.log(f"Failed to write text to Windows clipboard: {e}")
         finally:
             try:
@@ -422,7 +485,6 @@ class ClipboardServer:
             
             self.log("Successfully wrote image to Windows clipboard (CF_DIB & PNG)")
         except Exception as e:
-            self.ignore_next_clipboard_change = False
             self.log(f"Failed to write image to Windows clipboard: {e}")
         finally:
             try:

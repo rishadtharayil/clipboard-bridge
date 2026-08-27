@@ -27,10 +27,14 @@ class MainActivity : ComponentActivity() {
     if (key != null && key.length == 16) {
         ClipboardSyncService.key.value = key
         val serviceIntent = Intent(this, ClipboardSyncService::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ClipboardBridge", "Failed to auto-start service: ${e.message}")
         }
     }
 

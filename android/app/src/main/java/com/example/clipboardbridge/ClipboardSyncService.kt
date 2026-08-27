@@ -8,6 +8,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -16,6 +18,9 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
@@ -42,6 +47,9 @@ class ClipboardSyncService : Service() {
     private var isServiceRunning = false
 
     private var aesKey: SecretKeySpec? = null
+
+    private var serviceJob: Job? = null
+    private val serviceScope = CoroutineScope(Dispatchers.Default)
 
     // Tracking hashes to prevent feedback loops
     private var lastSentTextHash: String? = null
@@ -183,7 +191,8 @@ class ClipboardSyncService : Service() {
             acquireMulticastLock()
 
             // Observe key changes to re-derive aesKey
-            kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+            serviceJob?.cancel()
+            serviceJob = serviceScope.launch {
                 key.collect { newKey ->
                     if (newKey.length == 16) {
                         aesKey = CryptoUtils.deriveKey(newKey)
@@ -225,6 +234,7 @@ class ClipboardSyncService : Service() {
     }
 
     override fun onDestroy() {
+        serviceJob?.cancel()
         isServiceRunning = false
         isRunning.value = false
         connectionStatus.value = "Disconnected"
@@ -456,8 +466,17 @@ class ClipboardSyncService : Service() {
     }
 
     private fun isWifiConnected(): Boolean {
-        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        return wifiManager.isWifiEnabled && wifiManager.connectionInfo.networkId != -1
+        val connectivityManager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = connectivityManager.activeNetwork ?: return false
+            val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        } else {
+            @Suppress("DEPRECATION")
+            val networkInfo = connectivityManager.activeNetworkInfo ?: return false
+            @Suppress("DEPRECATION")
+            return networkInfo.isConnected && networkInfo.type == ConnectivityManager.TYPE_WIFI
+        }
     }
 
     private fun showToast(message: String) {
@@ -558,9 +577,6 @@ class ClipboardSyncService : Service() {
             try {
                 val cacheDir = File(cacheDir, "shared_images")
                 if (!cacheDir.exists()) cacheDir.mkdirs()
-                
-                // Clear old images
-                cacheDir.listFiles()?.forEach { it.delete() }
 
                 val file = File(cacheDir, "synced_${System.currentTimeMillis()}.png")
                 file.writeBytes(imageBytes)

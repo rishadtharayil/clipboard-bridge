@@ -74,10 +74,15 @@ fun MainScreen(modifier: Modifier = Modifier) {
                 
                 // Start service automatically
                 val serviceIntent = Intent(context, ClipboardSyncService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(serviceIntent)
+                    } else {
+                        context.startService(serviceIntent)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ClipboardBridge", "Failed to start service: ${e.message}")
+                    android.widget.Toast.makeText(context, "Failed to start sync service", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
