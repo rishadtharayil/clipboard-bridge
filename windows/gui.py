@@ -42,14 +42,11 @@ class ClipboardBridgeApp:
         # Start the server immediately
         self.start_server()
         
-        # Start CustomTkinter in a background thread
-        threading.Thread(target=self.run_tk, daemon=True).start()
+        # Setup System Tray in a background thread
+        threading.Thread(target=self.setup_tray, daemon=True).start()
         
-        # Wait for Tkinter to be ready
-        self.root_ready.wait()
-        
-        # Setup System Tray (this will block the main thread)
-        self.setup_tray()
+        # Start CustomTkinter on the main thread
+        self.run_tk()
 
     def run_tk(self):
         ctk.set_appearance_mode("dark")
@@ -79,8 +76,12 @@ class ClipboardBridgeApp:
         self.status_callback(status)
         self._update_history_ui()
         
-        self.show_window()
-        
+        # Only show window initially if not set to run on startup
+        if not self.config.get('run_on_startup', False):
+            self.show_window()
+        else:
+            self.hide_window()
+            
         self.root.mainloop()
 
     def generate_key(self):
@@ -262,6 +263,8 @@ class ClipboardBridgeApp:
                 copy_btn.pack(side=tk.RIGHT, padx=10)
 
     def copy_to_clipboard_direct(self, val):
+        if self.server:
+            self.server.ignore_next_clipboard_change = True
         self.root.clipboard_clear()
         self.root.clipboard_append(val)
         self.root.update()
@@ -472,6 +475,8 @@ class ClipboardBridgeApp:
             self.qr_label.configure(image=self.qr_photo)
 
     def copy_key(self):
+        if self.server:
+            self.server.ignore_next_clipboard_change = True
         self.root.clipboard_clear()
         self.root.clipboard_append(self.config['key'])
         self.root.update()
@@ -651,6 +656,8 @@ class ClipboardBridgeApp:
         if hasattr(self, 'log_text'):
             logs_content = self.log_text.get("1.0", tk.END).strip()
             if logs_content:
+                if self.server:
+                    self.server.ignore_next_clipboard_change = True
                 self.root.clipboard_clear()
                 self.root.clipboard_append(logs_content)
                 self.root.update()
